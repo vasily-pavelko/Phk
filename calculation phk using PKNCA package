@@ -1,0 +1,90 @@
+library(groundhog)
+#groundhog.library(xlsx, '2021-01-13')
+#groundhog.library(PKNCA, '2021-01-13')
+#install.packages("PKNCA", repos=c("http://rstudio.org/_packages", "http://cran.rstudio.com",dependencies=TRUE))
+library(xlsx)
+library(PKNCA)
+#install.packages("dplyr", repos=c("http://rstudio.org/_packages", "http://cran.rstudio.com", dependencies=TRUE))
+
+library(dplyr)
+#install.packages("tidyr", repos=c("http://rstudio.org/_packages", "http://cran.rstudio.com", dependencies=TRUE))
+library(tidyr)
+
+#install.packages("plotly", repos=c("http://rstudio.org/_packages", "http://cran.rstudio.com", dependencies=TRUE))
+library(plotly)
+colname <- c("Group", "Analyte",	"Lot",	"Sex", "Animal_name",		"1",	"5",	"10",	"20",	"30",
+              "45",	"60",	"90",	"120",	"150")
+d <- read.xlsx(file = "1.xlsx", 1)
+colnames(d) <- colname
+d <- d[1:90,1:15]
+head(d)
+zero <- seq(0, 0, length.out = 90)
+d <- cbind(d, zero)
+colnames(d)[16] <- 0
+m <- gather(d, key = "Time", "Concentration","0", "1",	"5",	"10",	"20",	"30",
+            "45",	"60",	"90",	"120",	"150")
+head(m)
+#dose(1 mg/kg), concentration(ng/ml), Time(min) https://cran.r-project.org/web/packages/PKNCA/vignettes/Introduction-and-Usage.html#quick-start
+Dose <- seq(1, 1, length.out = 990)
+m <- cbind(m, Dose)
+m$Time <- as.numeric(m$Time)
+m$Concentration <- as.numeric(m$Concentration)
+str(m)
+
+apply(m[,1:5], MARGIN = 2, unique)
+
+plots <- c()
+i = 1
+j = "M"
+k = "1AB1"
+k = "1AB1"
+plotList <- list()
+for (i in 1:5) {
+  for (j in c("M", "F")) {
+    data_group_sex <- m %>% filter(Group == i) %>% filter(Sex == j)
+    an_names_group_sex <- unique(data_group_sex$Animal_name)
+    P <- plot_ly()
+    for (k in an_names_group_sex) {
+      dfk <- m %>% filter(Group == i) %>% filter(Sex == j) %>% filter(Animal_name == k)
+      P <- add_trace(P, 
+                     y=~Concentration, 
+                     x=~Time, 
+                     data=dfk, 
+                     type="scatter", 
+                     mode="lines", 
+                     name = k)
+    }
+    name <- paste0("Group ", i, sep = ", ", j)
+    P <- P %>% layout(xaxis = list(title = "Time(min)"),
+                      yaxis = list (title = "Concentration(ng/ml)", type = "log"),
+                      title = name
+                      )
+    plotList[[name]] <- plotly_build(P)
+    }
+}
+frameOfPlots <- subplot(plotList, nrows = 4)
+frameOfPlots
+
+
+conc_ob <- PKNCAconc(m, Concentration~Time|Animal_name)
+dose_ob <- PKNCAdose(m, Dose~Time|Animal_name)
+intervals_manual <- data.frame(start=0, end=150, 
+                               auclast=TRUE,
+                               lambda.z=TRUE,
+                               adj.r.squared=TRUE,
+                               half.life=TRUE,
+                               tmax=TRUE,
+                               cmax=TRUE,
+                               aucinf.obs=TRUE,
+                               vz.obs=TRUE,
+                               cl.obs=TRUE,
+                               mrt.obs=TRUE,
+                               vss.obs=TRUE
+                               )
+#interval <- check.interval.specification(intervals_manual)
+data_ob <- PKNCAdata(conc_ob, dose_ob, intervals = intervals_manual)
+
+results_obj <- pk.nca(data_ob)
+summary(results_obj)
+
+
